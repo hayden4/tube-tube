@@ -177,11 +177,9 @@ class Atom : protected Pointers {
 
   // USER-TUBETUBE package
   int nbond_max;		// maximum number of tube bonds a particle can have
-  int **ghost_bond_types;	// tracks bond type of ghost atoms
   tagint **ghost_bond_tags;	// tracks bonded atom tags
   double **ghost_bond_x;	// tracks bonded atom positions
-  double **ghost_bond_f;
-  tagint *ghost_atom_tag;
+  double **ghost_bond_f;	// tracks bonded atom forces
 
   // molecule templates
   // each template can be a set of consecutive molecules

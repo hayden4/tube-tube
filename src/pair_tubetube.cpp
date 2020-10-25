@@ -84,17 +84,22 @@ void PairTubeTube::compute(int eflag, int vflag)
 				int type2 = atom->type[k];
 				k &= NEIGHMASK;
 
+				// Check if k will be iterated over in this compute step
 				if (nl_contains(atom->tag[k], list->ilist, list->inum))
 				{
+					// If so, get its local index
 					k = atom->map(atom->tag[k]);
 
+					// Iterate over k's bonded atoms
 					for (int ll = 0; ll < atom->num_bond[k]; ll++)
 					{
+						// Get lth atom bonded to k
 						int l = atom->map(atom->bond_atom[k][ll]);
 
 						// i is local
 						// k is local
 
+						// Perform double counting check
 						if (nl_contains(atom->tag[l], list->firstneigh[i], list->numneigh[i])) if (atom->tag[l] < atom->tag[k]) continue;
 						if (nl_contains(atom->tag[i], list->firstneigh[k], list->numneigh[k])) if (atom->tag[k] < atom->tag[i]) continue;
 						if (nl_contains(atom->tag[j], list->firstneigh[k], list->numneigh[k])) if (atom->tag[k] < atom->tag[i]) continue;
@@ -109,20 +114,26 @@ void PairTubeTube::compute(int eflag, int vflag)
 							if (nl_contains(atom->tag[j], list->firstneigh[l], list->numneigh[l])) if (atom->tag[l] < atom->tag[i]) continue;
 						}
 
+						// Calculate the forces on the current permutation of atoms
 						calculate_force(atom->x[i], atom->x[j], atom->x[k], atom->x[l], type1, type2, i, k, atom->f[i], atom->f[j], atom->f[k], atom->f[l]);
 					}
 				}
 				else
 				{
+					// If k is local, skip it
 					if (k < atom->nlocal)
 						continue;
 
+					// Get k's local index
 					k = atom->map(atom->tag[k]);
 
+					// Iterate over k's ghost bonded atoms
 					for (int ll = 0; ll < atom->nbond_max; ll++)
 					{
+						// Get l's tag
 						tagint tag_l = atom->ghost_bond_tags[k-atom->nlocal][ll];
 
+						// Check if l is a valid tag
 						if (tag_l <= 0) continue;
 
 						int l = atom->map(tag_l);
@@ -130,6 +141,7 @@ void PairTubeTube::compute(int eflag, int vflag)
 						// i is local
 						// k is not local
 						
+						// Perform double counting check
 						if (nl_contains(atom->tag[l], list->firstneigh[i], list->numneigh[i])) if (atom->tag[l] < atom->tag[k]) continue;
 						if (nl_contains(atom->tag[j], list->ilist, list->inum))
 						{
@@ -142,6 +154,7 @@ void PairTubeTube::compute(int eflag, int vflag)
 							if (nl_contains(atom->tag[j], list->firstneigh[l], list->numneigh[l])) if (atom->tag[l] < atom->tag[i]) continue;
 						}
 
+						// Calculate forces on the current permutation of atoms
 						calculate_force(atom->x[i], atom->x[j], atom->x[k], &atom->ghost_bond_x[k-atom->nlocal][3*ll], type1, type2, i, k, atom->f[i], atom->f[j], atom->f[k], &atom->ghost_bond_f[k-atom->nlocal][3*ll]);
 					}
 				}
@@ -149,21 +162,28 @@ void PairTubeTube::compute(int eflag, int vflag)
 		}
 	}
 
+	// Perform virial computations post compute
 	if (vflag_fdotr) virial_fdotr_compute();
 }
 
 /* ---------------------------------------------------------------------- */
 
+/**
+ * Allocate parameter arrays
+ */
 void PairTubeTube::allocate()
 {
+	// Set allocated to true
 	allocated = 1;
 	int n = atom->ntypes;
 	
+	// Allocate set flag array
 	memory->create(setflag,n+1,n+1,"pair:setflag");
 	for (int i = 1; i <= n; i++)
 		for (int j = i; j <= n; j++)
 			setflag[i][j] = 0;
 	
+	// Allocate parameter arrays
 	memory->create(cutsq,n+1,n+1,"pair:cutsq");
 	memory->create(cut,n+1,n+1,"pair:cut");
 	memory->create(hamaker,n+1,n+1,"pair:hamaker");
@@ -174,10 +194,17 @@ void PairTubeTube::allocate()
 
 /* ---------------------------------------------------------------------- */
 
+/**
+ * Read settings command from input script
+ */
 void PairTubeTube::settings(int narg, char **arg)
 {
+	// Expect 2 arguments exactly: repulsion type and cutoff
 	if (narg != 2) error->all(FLERR,"Illegal pair_style command");
-
+// Repulsion types:
+	// none - NO_REPULSION
+	// power - POWER_REPULSION
+	// exp - EXP_REPULSION
 	if (strcmp(arg[0],"none") == 0) {
 		repulsion_type = NO_REPULSION;
 	} else if (strcmp(arg[0],"power") == 0) {
@@ -188,8 +215,10 @@ void PairTubeTube::settings(int narg, char **arg)
 		error->all(FLERR, "Illegal pair tubetube command");
 	}
 
+	// Read global cutoff
 	cut_global = force->numeric(FLERR,arg[1]);
 
+	// If parameter arrays are already allocated, set the new cutoff
 	if (allocated) {
 		for (int i = 1; i <= atom->ntypes; i++)
 			for (int j = i; j <= atom->ntypes; j++)
@@ -199,26 +228,36 @@ void PairTubeTube::settings(int narg, char **arg)
 
 /* ---------------------------------------------------------------------- */
 
+/**
+ * Load coefficients from an input script
+ */
 void PairTubeTube::coeff(int narg, char **arg)
 {
+	// Expecting 4 to 6 arguments
 	if (narg < 4 || narg > 6)
 		error->all(FLERR, "Incorrect args for pair coefficients");
 
+	// Make sure parameter arrays are allocated
 	if (!allocated) allocate();
 
+	// Get atom types to set
 	int ilo,ihi,jlo,jhi;
 	force->bounds(FLERR,arg[0],atom->ntypes,ilo,ihi);
 	force->bounds(FLERR,arg[1],atom->ntypes,jlo,jhi);
 
+	// Read hamaker constant and tube radius
 	double hamaker_one = force->numeric(FLERR, arg[2]);
 	double radius_one  = force->numeric(FLERR, arg[3]);
 
+	// Read repulsion constant if available
 	double xi_one = 0;
 	if (narg >= 5) xi_one = force->numeric(FLERR, arg[4]);
 	
+	// Read type specific cutoff if available
 	double cut_one = cut_global;
 	if (narg >= 6) cut_one = force->numeric(FLERR, arg[5]);
 
+	// Set parameters for given types
 	int count = 0;
 	for (int i = ilo; i <= ihi; i++) {
 		for (int j = MAX(jlo,i); j <= jhi; j++) {
@@ -236,30 +275,119 @@ void PairTubeTube::coeff(int narg, char **arg)
 
 /* ---------------------------------------------------------------------- */
 
+/**
+ * Writes pair data to the file
+ */
 void PairTubeTube::write_data(FILE *fp)
 {
-	fprintf(fp, "Proc %d\n", comm->me);
-	fprintf(fp, "THIS IS THE TUBE TUBE POTENTIAL\n");
+	for (int i = 1; i <= atom->ntypes; i++)
+		fprintf(fp, "%d %g %g %g\n", i, hamaker[i][i], radius[i][i], xi[i][i]);
 }
 
+/* ---------------------------------------------------------------------- */
+
+/**
+ * Writes pair data to the file
+ */
 void PairTubeTube::write_data_all(FILE *fp)
 {
-	fprintf(fp, "THIS IS THE TUBE TUBE POTENTIAL ALL\n");
+	for (int i = 1; i <= atom->ntypes; i++)
+		for (int j = 1; j <= atom->ntypes; j++)
+			fprintf(fp, "%d %d %g %g %g %g\n", i, j, hamaker[i][j], radius[i][j], xi[i][j], cut[i][j]);
 }
 
+/* ---------------------------------------------------------------------- */
+
+/**
+ * Writes coefficients to a restart file
+ */
+void PairTubeTube::write_restart(FILE *fp)
+{
+	write_restart_settings(fp);
+
+	for (int i = 1; i <= atom->ntypes; i++)
+	{
+		for (int j = i; j <= atom->ntypes; j++)
+		{
+			fwrite(&setflag[i][j], sizeof(int), 1, fp);
+			if (setflag[i][j]) {
+				fwrite(&hamaker[i][j], sizeof(double), 1, fp);
+				fwrite(&radius[i][j], sizeof(double), 1, fp);
+				fwrite(&xi[i][j], sizeof(double), 1, fp);
+				fwrite(&cut[i][j], sizeof(double), 1, fp);
+			}
+		}
+	}
+}
+
+/* ---------------------------------------------------------------------- */
+
+/**
+ * Read coefficients from a restart file
+ */
+void PairTubeTube::read_restart(FILE *fp)
+{
+	read_restart_settings(fp);
+	allocate();
+
+	for (int i = 1; i <= atom->ntypes; i++)
+	{
+		for (int j = 1; j <= atom->ntypes; j++)
+		{
+			if (comm->me == 0) utils::sfread(FLERR, &setflag[i][j], sizeof(int), 1, fp, nullptr, error);
+			MPI_Bcast(&setflag[i][j], 1, MPI_INT, 0, world);
+			if (setflag[i][j]) {
+				if (comm->me == 0) {
+					utils::sfread(FLERR,&hamaker[i][j], sizeof(double), 1, fp, nullptr, error);
+					utils::sfread(FLERR,&radius[i][j], sizeof(double), 1, fp, nullptr, error);
+					utils::sfread(FLERR,&xi[i][j], sizeof(double), 1, fp, nullptr, error);
+					utils::sfread(FLERR,&cut[i][j], sizeof(double), 1, fp, nullptr, error);
+				}
+				MPI_Bcast(&hamaker[i][j], 1, MPI_DOUBLE, 0, world);
+				MPI_Bcast(&radius[i][j], 1, MPI_DOUBLE, 0, world);
+				MPI_Bcast(&xi[i][j], 1, MPI_DOUBLE, 0, world);
+				MPI_Bcast(&cut[i][j], 1, MPI_DOUBLE, 0, world);
+			}
+		}
+	}
+}
+
+/* ---------------------------------------------------------------------- */
+
+/**
+ * Write settings to a restart file
+ */
+void PairTubeTube::write_restart_settings(FILE *fp)
+{
+	fwrite(&cut_global, sizeof(double), 1, fp);
+	fwrite(&repulsion_type, sizeof(int), 1, fp);
+}
+
+/* ---------------------------------------------------------------------- */
+
+/**
+ * Read settings from a restart file
+ */
+void PairTubeTube::read_restart_settings(FILE *fp)
+{
+	if (comm->me == 0)
+	{
+		utils::sfread(FLERR, &cut_global, sizeof(double), 1, fp, nullptr, error);
+		utils::sfread(FLERR, &repulsion_type, sizeof(int), 1, fp, nullptr, error);
+	}
+
+	MPI_Bcast(&cut_global, 1, MPI_DOUBLE, 0, world);
+	MPI_Bcast(&repulsion_type, 1, MPI_INT, 0, world);
+}
+
+/* ---------------------------------------------------------------------- */
+
+/**
+ * Initializes the interaction between atom types i and j
+ */
 double PairTubeTube::init_one(int i, int j)
 {
-	//printf("INIT ONE CALLED\n");
-
-	/*
-	if (setflag[i][j] == 0) {
-		// This needs to be checked :(
-		hamaker[i][j] = mix_energy(hamaker[i][i], hamaker[j][j], radius[i][i], radius[j][j]);
-		radius[i][j] = mix_distance(radius[i][i], radius[j][j]);
-		cut[i][j] = mix_distance(cut[i][i], cut[j][j]);
-	}
-	*/
-
+	// Calculate vdw as the constant prefactor of the potential energy equation
 	vdw[i][j] = hamaker[i][j] * M_PI * pow(2.0*radius[i][j], 4.0) / 32.0;
 	vdw[j][i] = vdw[i][j];
 
@@ -268,8 +396,14 @@ double PairTubeTube::init_one(int i, int j)
 
 
 
+/* ---------------------------------------------------------------------- */
 
-
+/**
+ * Iterates over the neighborlist ls of length size, and
+ * checks to see if it contains the tag a. The neighborlist should
+ * contain local ids (ints).
+ * Returns true if ls contains a, false otherwise.
+ */
 bool PairTubeTube::nl_contains(tagint a, int* ls, int size)
 {
 	for (int i = 0; i < size; i++)
@@ -281,19 +415,31 @@ bool PairTubeTube::nl_contains(tagint a, int* ls, int size)
 	}
 	return false;
 }
+/* ---------------------------------------------------------------------- */
 
 // Vector operations
 
+/**
+ * Computes the dot product of two 3D vectors a
+ * and b.
+ */
 double dot(double* a, double* b)
 {
 	return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
 }
 
+/**
+ * Computes the norm of a 3D vector a
+ */
 double norm(double* a)
 {
 	return sqrt(dot(a,a));
 }
 
+/**
+ * Computes the cross product of 3D vectors a and b
+ * and places the result in c
+ */
 void cross(double* a, double* b, double* c)
 {
 	c[0] = a[1]*b[2] - a[2]*b[1];
@@ -301,12 +447,20 @@ void cross(double* a, double* b, double* c)
 	c[2] = a[0]*b[1] - a[1]*b[0];
 }
 
+/**
+ * Multiplies all elements a 3D vector v by a
+ */
 void scale(double a, double* v)
 {
 	for (int i = 0; i < 3; i++)
 		v[i] *= a;
 }
 
+/**
+ * Computes the shortest distance from a point p to a line defined by
+ * f(t) = p1 + n*t
+ * where t in [0, L]
+ */
 double point_to_segment(double* p, double* p1, double* n, double L)
 {
 	double lambda = (n[0]*(p[0]-p1[0]) + n[1]*(p[1]-p1[1]) + n[2]*(p[2]-p1[2]));
@@ -320,33 +474,63 @@ double point_to_segment(double* p, double* p1, double* n, double L)
 	return norm(q);
 }
 
+/* ---------------------------------------------------------------------- */
+
+// Math functions for Logan-Tkachenko potential
+
+/**
+ * Computes the minimum of two numbers
+ */
 double min(double a, double b)
 {
 	return (a < b) ? a : b;
 }
 
+/**
+ * g function defined in Logan-Tkachenko
+ */
 double g(double x)
 {
 	double s = (x < 0) ? -1 : 1;
 	return 0.5 * s * min(1, 1.5*fabs(x));
 }
 
+/**
+ * gamma function defined in Logan-Tkachenko
+ */
 double gamma(double xp, double xm, double yp, double ym)
 {
 	return min(g(xp) - g(xm), g(yp) - g(ym));
 }
 
+/**
+ * Heaviside function
+ * Returns 0 if x < 0
+ * Else returns 1
+ */
 double heaviside(double x)
 {
 	return (x < 0) ? 0 : 1;
 }
 
+/**
+ * Compute the sign of a number
+ */
 double sgn(double x)
 {
 	return (x < 0) ? -1 : 1;
 }
 
+/* ---------------------------------------------------------------------- */
 
+/**
+ * Calculates forces between tube 1 (ix, jx) and tube 2
+ * (kx, lx). The type of the tubes are type1 and type2
+ * respectively. atom_i and atom_j refer to the indexes
+ * of the lead atom in tube (used for energy tallying).
+ * Forces are added to the vectors (fi, fj) for tube 1
+ * and (fk, fl) for tube 2.
+ */
 void PairTubeTube::calculate_force(
 	double* ix, double* jx, double* kx, double* lx,
 	int type1, int type2, int atom_i, int atom_j,
@@ -469,6 +653,8 @@ void PairTubeTube::calculate_force(
 
 
 	/* ---------------------------------------- */
+	/* Begin force calculation section          */
+	/* ---------------------------------------- */
 	double F1[3], F2[3], tau1[3], tau2[3];
 
 	const double v = acos_t + 3*L*asin_t / (4*(r+a));
@@ -575,6 +761,8 @@ void PairTubeTube::calculate_force(
 	
 
 	/* ---------------------------------------- */
+	/* End Force Calculation Section            */
+	/* ---------------------------------------- */
 
 
 	// Apply force and torque to atoms
@@ -606,6 +794,8 @@ void PairTubeTube::calculate_force(
 		scale(2*t2/(L2*tn2), f2);
 	}
 
+	// ----- DEBUG ---- //
+	
 	const double large = 100;
 
 	if (norm(F1) > large or norm(f1) > large) {
@@ -634,6 +824,8 @@ void PairTubeTube::calculate_force(
 
 		printf("\n");
 	}
+
+	// ----- END DEBUG ----- //
 
 	for (int i = 0; i < 3; i++)
 	{

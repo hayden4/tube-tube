@@ -195,11 +195,9 @@ Atom::Atom(LAMMPS *lmp) : Pointers(lmp)
 
   // USER-TUBETUBE packaage
   nbond_max = 4;
-  ghost_bond_types = NULL;
   ghost_bond_tags = NULL;
   ghost_bond_x = NULL;
   ghost_bond_f = NULL;
-  ghost_atom_tag = NULL;
 
   // ntype-length arrays
 

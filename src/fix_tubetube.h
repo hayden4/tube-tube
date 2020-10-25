@@ -31,11 +31,9 @@ namespace LAMMPS_NS {
 	private:
 		const static int nbond_max = 4;	// maximum number of bonds to be transmitted during communication
 
-		tagint 	 *ghost_atom_tag;	// ghost atom's tag
 		tagint 	**ghost_bond_tags;	// tags of atoms in the ghost atom's bonds 
-		int 	**ghost_bond_types;	// types of ghost atom's bonds
 		double	**ghost_bond_x;		// positions of atoms in the ghost atom's bonds
-		double	**ghost_bond_f;
+		double	**ghost_bond_f;		// forces of atoms in the ghost atom's bonds
 
 		int ghost_capacity;		// ghost array capacity
 		void ensureCapacity(int);	// ensures ghost arrays have specified capacity

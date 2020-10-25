@@ -32,6 +32,10 @@ class PairTubeTube : public Pair {
   // Read and write parameters
   void write_data(FILE *fp);
   void write_data_all(FILE *fp);
+  void write_restart(FILE *fp);
+  void write_restart_settings(FILE *fp);
+  void read_restart(FILE *fp);
+  void read_restart_settings(FILE *fp);
 
  protected:
   // Cut variables
@@ -48,6 +52,7 @@ class PairTubeTube : public Pair {
   double **xi;		// Repulsion distance xi
   double **vdw;		// vdW factor (determined by init_one)
 
+  // Repulsion settings
   int repulsion_type;
   static const int NO_REPULSION = 0;
   static const int POWER_REPULSION = 1;
